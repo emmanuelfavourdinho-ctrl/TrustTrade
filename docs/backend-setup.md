@@ -137,7 +137,14 @@ Set these variables in the Render API service:
   endpoint, use the **Session pooler** connection string (port `5432`) here as
   well. The session pooler is suitable for `prisma migrate deploy`.
 - `WEB_ORIGIN`: The deployed Vercel frontend's origin, for example
-  `https://your-app.vercel.app`.
+  `https://your-app.vercel.app`. Set this to the exact public frontend origin;
+  the API uses it for credentialed CORS and to validate mutation request
+  origins. Production session cookies use `SameSite=None; Secure` so browsers
+  can send them when the frontend and API are on different sites. For the most
+  reliable browser support, configure the frontend and API on the same
+  registrable domain (for example, `app.example.com` and `api.example.com`),
+  since some browsers block third-party cookies even when `SameSite=None` is
+  set.
 - `NODE_ENV`: `production`.
 
 Render provides `PORT` to the service; no manual value is needed. Supabase

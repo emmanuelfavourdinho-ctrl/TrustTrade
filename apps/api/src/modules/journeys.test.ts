@@ -5,6 +5,7 @@ import argon2 from "argon2";
 import { promises as fs } from "node:fs";
 import { resolve } from "node:path";
 import { createApp } from "../app.js";
+import { env } from "../config/env.js";
 import { prisma } from "../database/client.js";
 import { Prisma } from "../generated/prisma/client.js";
 import { verificationStoragePath } from "./verification/upload.js";
@@ -130,6 +131,48 @@ describe("TrustTrade registration, verification and publishing", () => {
       });
     }
     await prisma.$disconnect();
+  });
+
+  it("supports credentialed browser login and loads the customer feed session", async () => {
+    const preflight = await request(app)
+      .options("/api/v1/auth/login")
+      .set("Origin", origin)
+      .set("Access-Control-Request-Method", "POST")
+      .set("Access-Control-Request-Headers", "content-type")
+      .expect(204);
+    expect(preflight.headers["access-control-allow-origin"]).toBe(origin);
+    expect(preflight.headers["access-control-allow-credentials"]).toBe("true");
+
+    const signedIn = await request(app)
+      .post("/api/v1/auth/login")
+      .set("Origin", origin)
+      .send({ email: email("customer"), password: "A-long-test-password-2026" })
+      .expect(200);
+    expect(signedIn.headers["access-control-allow-origin"]).toBe(origin);
+    expect(signedIn.headers["access-control-allow-credentials"]).toBe("true");
+
+    const cookieHeader: unknown = signedIn.headers["set-cookie"];
+    const cookie = Array.isArray(cookieHeader) ? cookieHeader[0] : cookieHeader;
+    if (typeof cookie !== "string") throw new Error("Login response did not set a session cookie.");
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("Path=/api/v1");
+    expect(cookie).toContain(env.NODE_ENV === "production" ? "SameSite=None" : "SameSite=Lax");
+    if (env.NODE_ENV === "production") expect(cookie).toContain("Secure");
+
+    const currentUser = await request(app)
+      .get("/api/v1/auth/me")
+      .set("Cookie", cookie.split(";")[0]!)
+      .expect(200);
+    expect(currentUser.body.data).toMatchObject({
+      id: customer.userId,
+      role: "CUSTOMER",
+      accountStatus: "ACTIVE",
+    });
+
+    await request(app)
+      .get("/api/v1/posts")
+      .set("Cookie", cookie.split(";")[0]!)
+      .expect(200);
   });
 
   it("denies customer verification and unverified artisan publishing", async () => {

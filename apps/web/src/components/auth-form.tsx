@@ -166,7 +166,7 @@ function LoginForm(props: FormFeedbackProps) {
       await loginAccount(values);
       const user = await getCurrentUser();
       queryClient.setQueryData(["session", "current-user"], user);
-      router.replace(user.role === "admin" ? "/admin" : user.role === "artisan" ? "/artisan/dashboard" : "/feed");
+      router.replace(dashboardForRole(user.role));
     } catch (error) {
       props.onError(getErrorMessage(error));
     }
@@ -203,7 +203,15 @@ function LoginForm(props: FormFeedbackProps) {
   );
 }
 
+function dashboardForRole(role: "admin" | "artisan" | "customer") {
+  if (role === "admin") return "/admin";
+  if (role === "artisan") return "/artisan/dashboard";
+  return "/feed";
+}
+
 function RegisterForm(props: FormFeedbackProps) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const {
     register,
     handleSubmit,
@@ -219,13 +227,24 @@ function RegisterForm(props: FormFeedbackProps) {
     props.onError("");
     props.onSuccess("");
     try {
-      const result = await registerAccount({
+      await registerAccount({
         fullName: values.fullName,
         email: values.email,
         password: values.password,
         role: values.role,
       });
-      props.onSuccess(result.message ?? "Your account has been created. You can now sign in.");
+      try {
+        await loginAccount({ email: values.email, password: values.password });
+        const user = await getCurrentUser();
+        queryClient.setQueryData(["session", "current-user"], user);
+        router.replace(dashboardForRole(user.role));
+      } catch (error) {
+        props.onError(
+          `Your account was created, but automatic sign-in failed. Please sign in to continue. ${
+            getErrorMessage(error)
+          }`,
+        );
+      }
     } catch (error) {
       props.onError(getErrorMessage(error));
     }

@@ -13,6 +13,7 @@ import {
 } from "./service.js";
 
 const router = Router();
+const sessionCookieSameSite = env.NODE_ENV === "production" ? "none" : "lax";
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -35,7 +36,7 @@ router.post("/login", authLimiter, validateBody(loginSchema), async (request, re
   response.cookie(env.SESSION_COOKIE_NAME, session.token, {
     httpOnly: true,
     secure: env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: sessionCookieSameSite,
     path: "/api/v1",
     expires: session.expiresAt,
   });
@@ -51,7 +52,7 @@ router.post(
     response.clearCookie(env.SESSION_COOKIE_NAME, {
       httpOnly: true,
       secure: env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: sessionCookieSameSite,
       path: "/api/v1",
     });
     apiSuccess(response, { message: "Signed out." }, "Signed out.");
