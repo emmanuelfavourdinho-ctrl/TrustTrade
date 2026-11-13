@@ -9,8 +9,11 @@ responses use `{ success, data, message? }` and
 
 1. Install Node.js 22.12 or newer and PostgreSQL 18 with PostGIS 3.6.
 2. Create an application database and a least-privilege application role.
-3. Copy `apps/api/.env.example` to `apps/api/.env` and set `DATABASE_URL` and
-   `WEB_ORIGIN`. To enable public media, also configure the three Cloudinary
+3. Copy `apps/api/.env.example` to `apps/api/.env` and set `DATABASE_URL`,
+   `DIRECT_URL`, and `WEB_ORIGIN`. For local PostgreSQL, `DATABASE_URL` and
+   `DIRECT_URL` can use the same connection string. The application connects
+   with `DATABASE_URL`; Prisma CLI migrations use `DIRECT_URL`. To enable public
+   media, also configure the three Cloudinary
    credentials and both signed upload preset names described below; these are
    optional for starting the API. Separately
    copy `apps/web/.env.example` to `apps/web/.env` and set
@@ -120,3 +123,58 @@ Run `npm run typecheck:api`, `npm run lint:api`, `npm run test:api`,
 `npm run build:api`, `npm run typecheck:web`, and `npm run build:web` for
 backend and browser integration checks. API media tests mock Cloudinary and do
 not perform or claim real uploads.
+
+## Render API with Supabase PostgreSQL
+
+Set these variables in the Render API service:
+
+- `DATABASE_URL`: Supabase PostgreSQL connection string for the running API.
+  Use the Supabase **Session pooler** connection string (port `5432`) when
+  Render cannot reach the database's direct IPv6 endpoint. Copy the full URI
+  from Supabase's Connect dialog and require SSL (`sslmode=require`).
+- `DIRECT_URL`: Supabase direct database connection string for Prisma
+  migrations, with `sslmode=require`. If Render cannot reach Supabase's direct
+  endpoint, use the **Session pooler** connection string (port `5432`) here as
+  well. The session pooler is suitable for `prisma migrate deploy`.
+- `WEB_ORIGIN`: The deployed Vercel frontend's origin, for example
+  `https://your-app.vercel.app`.
+- `NODE_ENV`: `production`.
+
+Render provides `PORT` to the service; no manual value is needed. Supabase
+connection strings contain database credentials: enter them as secret Render
+environment variables, URL-encode special characters in the password, and do
+not commit or expose them in frontend variables. Enable PostGIS in Supabase
+before the first migration: the initial migration creates a geography column
+before its `CREATE EXTENSION` statement. Run this in Supabase's SQL editor (or
+enable PostGIS in its Extensions dashboard) before deploying:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS postgis;
+```
+
+Set `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`,
+`CLOUDINARY_IMAGE_UPLOAD_PRESET`, and `CLOUDINARY_VIDEO_UPLOAD_PRESET` as
+server-only Render variables if public media uploads are enabled; they are
+optional otherwise.
+
+Set Render's Root Directory to the repository root. Configure the Render build
+command to generate the Prisma Client before compiling:
+
+```sh
+npm ci
+npm run db:generate --workspace=@trusttrade/api
+npm run build:api
+```
+
+Configure Render's **Pre-Deploy Command** to apply committed migrations before
+the new service version starts:
+
+```sh
+npm run db:migrate --workspace=@trusttrade/api
+```
+
+Start the API with:
+
+```sh
+npm run start --workspace=@trusttrade/api
+```
