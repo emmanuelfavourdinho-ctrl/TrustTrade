@@ -1,0 +1,406 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  CUSTOMER
+  ARTISAN
+  ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  RESTRICTED
+  SUSPENDED
+  BANNED
+  DEACTIVATED
+}
+
+enum VerificationStatus {
+  NOT_VERIFIED
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  NEEDS_RESUBMISSION
+  SUSPENDED
+}
+
+enum VerificationDecisionType {
+  SUBMITTED
+  APPROVED
+  REJECTED
+  RESUBMISSION_REQUESTED
+  SUSPENDED
+  REVOKED
+}
+
+enum PostStatus {
+  PUBLISHED
+  HIDDEN
+  REMOVED
+}
+
+enum PostType {
+  PROFESSIONAL_SERVICE
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum MediaProvider {
+  CLOUDINARY
+}
+
+enum MediaPurpose {
+  PROFILE_AVATAR
+  PROFILE_COVER
+  ARTISAN_PORTFOLIO
+  POST
+}
+
+enum MediaStatus {
+  ACTIVE
+  DELETING
+}
+
+enum AuditTargetType {
+  USER
+  VERIFICATION
+  POST
+  REPORT
+}
+
+model User {
+  id                    String                    @id @default(uuid()) @db.Uuid
+  fullName              String                    @map("full_name") @db.VarChar(100)
+  username              String                    @unique @db.VarChar(40)
+  email                 String                    @unique @db.VarChar(254)
+  phoneNumber           String?                   @map("phone_number") @db.VarChar(30)
+  passwordHash          String                    @map("password_hash")
+  role                  UserRole                  @default(CUSTOMER)
+  accountStatus         AccountStatus             @default(ACTIVE) @map("account_status")
+  createdAt             DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  profile               UserProfile?
+  artisanProfile        ArtisanProfile?
+  sessions              Session[]
+  verificationApps      VerificationApplication[] @relation("Applicant")
+  reviewedApplications  VerificationApplication[] @relation("Reviewer")
+  verificationDecisions VerificationDecision[]    @relation("DecisionActor")
+  posts                 Post[]                    @relation("PostAuthor")
+  comments              Comment[]
+  likes                 Like[]
+  media                 Media[]
+  mediaUploadIntents    MediaUploadIntent[]
+  auditLogs             AdminAuditLog[]           @relation("AuditActor")
+
+  @@index([role, accountStatus])
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("sessions")
+}
+
+model UserProfile {
+  id                  String    @id @default(uuid()) @db.Uuid
+  userId              String    @unique @map("user_id") @db.Uuid
+  profilePhoto        String?   @map("profile_photo") @db.VarChar(500)
+  coverPhoto          String?   @map("cover_photo") @db.VarChar(500)
+  profilePhotoMediaId String?   @unique @map("profile_photo_media_id") @db.Uuid
+  coverPhotoMediaId   String?   @unique @map("cover_photo_media_id") @db.Uuid
+  bio                 String    @default("") @db.VarChar(2000)
+  locationId          String?   @map("location_id") @db.Uuid
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location            Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  profilePhotoMedia   Media?    @relation("ProfilePhotoMedia", fields: [profilePhotoMediaId], references: [id], onDelete: SetNull)
+  coverPhotoMedia     Media?    @relation("CoverPhotoMedia", fields: [coverPhotoMediaId], references: [id], onDelete: SetNull)
+
+  @@map("user_profiles")
+}
+
+model ArtisanProfile {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  userId             String                    @unique @map("user_id") @db.Uuid
+  professionalTitle  String                    @default("") @map("professional_title") @db.VarChar(120)
+  professionalBio    String                    @default("") @map("professional_bio") @db.VarChar(3000)
+  experienceYears    Int                       @default(0) @map("experience_years")
+  averageRating      Decimal                   @default(0) @map("average_rating") @db.Decimal(3, 2)
+  totalReviews       Int                       @default(0) @map("total_reviews")
+  verificationStatus VerificationStatus        @default(NOT_VERIFIED) @map("verification_status")
+  createdAt          DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user               User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skills             ArtisanSkill[]
+  serviceAreas       ArtisanServiceArea[]
+  verificationApps   VerificationApplication[]
+  posts              Post[]
+  portfolioMedia     ArtisanPortfolioMedia[]
+
+  @@index([verificationStatus])
+  @@map("artisan_profiles")
+}
+
+model Location {
+  id           String                                @id @default(uuid()) @db.Uuid
+  name         String                                @db.VarChar(100)
+  city         String                                @db.VarChar(100)
+  region       String                                @db.VarChar(100)
+  parentId     String?                               @map("parent_id") @db.Uuid
+  point        Unsupported("geography(Point,4326)")?
+  isActive     Boolean                               @default(true) @map("is_active")
+  parent       Location?                             @relation("LocationTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children     Location[]                            @relation("LocationTree")
+  profiles     UserProfile[]
+  serviceAreas ArtisanServiceArea[]
+  posts        Post[]
+
+  @@index([city, region, isActive])
+  @@map("locations")
+}
+
+model ServiceCategory {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String  @unique @db.VarChar(100)
+  slug        String  @unique @db.VarChar(100)
+  description String  @default("") @db.VarChar(500)
+  isActive    Boolean @default(true) @map("is_active")
+  skills      Skill[]
+
+  @@map("service_categories")
+}
+
+model Skill {
+  id         String          @id @default(uuid()) @db.Uuid
+  categoryId String          @map("category_id") @db.Uuid
+  name       String          @db.VarChar(100)
+  slug       String          @db.VarChar(100)
+  category   ServiceCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  artisans   ArtisanSkill[]
+
+  @@unique([categoryId, slug])
+  @@map("skills")
+}
+
+model ArtisanSkill {
+  artisanId String         @map("artisan_id") @db.Uuid
+  skillId   String         @map("skill_id") @db.Uuid
+  artisan   ArtisanProfile @relation(fields: [artisanId], references: [id], onDelete: Cascade)
+  skill     Skill          @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([artisanId, skillId])
+  @@index([skillId])
+  @@map("artisan_skills")
+}
+
+model ArtisanServiceArea {
+  artisanId  String         @map("artisan_id") @db.Uuid
+  locationId String         @map("location_id") @db.Uuid
+  artisan    ArtisanProfile @relation(fields: [artisanId], references: [id], onDelete: Cascade)
+  location   Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@id([artisanId, locationId])
+  @@index([locationId])
+  @@map("artisan_service_areas")
+}
+
+model VerificationApplication {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  artisanId          String                 @map("artisan_id") @db.Uuid
+  applicantId        String                 @map("applicant_id") @db.Uuid
+  documentType       String                 @map("document_type") @db.VarChar(80)
+  documentStorageKey String                 @map("document_storage_key") @db.VarChar(500)
+  selfieStorageKey   String                 @map("selfie_storage_key") @db.VarChar(500)
+  status             VerificationStatus     @default(PENDING_REVIEW)
+  reviewedBy         String?                @map("reviewed_by") @db.Uuid
+  reviewedAt         DateTime?              @map("reviewed_at") @db.Timestamptz(6)
+  rejectionReason    String?                @map("rejection_reason") @db.VarChar(500)
+  reviewNotes        String?                @map("review_notes") @db.VarChar(2000)
+  createdAt          DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  artisan            ArtisanProfile         @relation(fields: [artisanId], references: [id], onDelete: Cascade)
+  applicant          User                   @relation("Applicant", fields: [applicantId], references: [id], onDelete: Restrict)
+  reviewer           User?                  @relation("Reviewer", fields: [reviewedBy], references: [id], onDelete: Restrict)
+  decisions          VerificationDecision[]
+
+  @@index([status, createdAt])
+  @@index([artisanId, createdAt])
+  @@map("verification_applications")
+}
+
+model VerificationDecision {
+  id            String                   @id @default(uuid()) @db.Uuid
+  applicationId String                   @map("application_id") @db.Uuid
+  actorId       String                   @map("actor_id") @db.Uuid
+  decision      VerificationDecisionType
+  reason        String?                  @db.VarChar(500)
+  notes         String?                  @db.VarChar(2000)
+  createdAt     DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  application   VerificationApplication  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  actor         User                     @relation("DecisionActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([applicationId, createdAt])
+  @@map("verification_decisions")
+}
+
+model Post {
+  id         String         @id @default(uuid()) @db.Uuid
+  authorId   String         @map("author_id") @db.Uuid
+  artisanId  String         @map("artisan_id") @db.Uuid
+  content    String         @db.VarChar(5000)
+  postType   PostType       @default(PROFESSIONAL_SERVICE) @map("post_type")
+  locationId String         @map("location_id") @db.Uuid
+  status     PostStatus     @default(PUBLISHED)
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  author     User           @relation("PostAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  artisan    ArtisanProfile @relation(fields: [artisanId], references: [id], onDelete: Restrict)
+  location   Location       @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  media      PostMedia[]
+  comments   Comment[]
+  likes      Like[]
+
+  @@index([status, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([authorId, createdAt(sort: Desc)])
+  @@index([artisanId, createdAt(sort: Desc)])
+  @@index([locationId, status, createdAt(sort: Desc)])
+  @@map("posts")
+}
+
+model PostMedia {
+  id           String    @id @default(uuid()) @db.Uuid
+  postId       String    @map("post_id") @db.Uuid
+  storageKey   String?   @map("storage_key") @db.VarChar(500)
+  mediaId      String?   @unique @map("media_id") @db.Uuid
+  mediaType    MediaType @map("media_type")
+  displayOrder Int       @default(0) @map("display_order")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  post         Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  media        Media?    @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+
+  @@index([postId, displayOrder])
+  @@map("post_media")
+}
+
+model ArtisanPortfolioMedia {
+  id           String         @id @default(uuid()) @db.Uuid
+  artisanId    String         @map("artisan_id") @db.Uuid
+  mediaId      String         @unique @map("media_id") @db.Uuid
+  displayOrder Int            @default(0) @map("display_order")
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  artisan      ArtisanProfile @relation(fields: [artisanId], references: [id], onDelete: Cascade)
+  media        Media          @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@index([artisanId, displayOrder])
+  @@map("artisan_portfolio_media")
+}
+
+model MediaUploadIntent {
+  id           String       @id @default(uuid()) @db.Uuid
+  ownerId      String       @map("owner_id") @db.Uuid
+  publicId     String       @unique @map("public_id") @db.VarChar(500)
+  folder       String       @db.VarChar(500)
+  purpose      MediaPurpose
+  resourceType MediaType    @map("resource_type")
+  maxBytes     Int          @map("max_bytes")
+  expiresAt    DateTime     @map("expires_at") @db.Timestamptz(6)
+  completedAt  DateTime?    @map("completed_at") @db.Timestamptz(6)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  owner        User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  media        Media?
+
+  @@index([completedAt, expiresAt])
+  @@index([ownerId, createdAt])
+  @@map("media_upload_intents")
+}
+
+model Media {
+  id              String                 @id @default(uuid()) @db.Uuid
+  ownerId         String                 @map("owner_id") @db.Uuid
+  uploadIntentId  String                 @unique @map("upload_intent_id") @db.Uuid
+  provider        MediaProvider          @default(CLOUDINARY)
+  assetId         String                 @unique @map("asset_id") @db.VarChar(100)
+  publicId        String                 @unique @map("public_id") @db.VarChar(500)
+  secureUrl       String                 @map("secure_url") @db.VarChar(2000)
+  resourceType    MediaType              @map("resource_type")
+  purpose         MediaPurpose
+  format          String                 @db.VarChar(30)
+  bytes           Int
+  width           Int?
+  height          Int?
+  status          MediaStatus            @default(ACTIVE)
+  createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  owner           User                   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  uploadIntent    MediaUploadIntent      @relation(fields: [uploadIntentId], references: [id], onDelete: Cascade)
+  profilePhotoFor UserProfile?           @relation("ProfilePhotoMedia")
+  coverPhotoFor   UserProfile?           @relation("CoverPhotoMedia")
+  postMedia       PostMedia?
+  portfolioMedia  ArtisanPortfolioMedia?
+
+  @@index([ownerId, status, createdAt])
+  @@index([purpose, status])
+  @@map("media")
+}
+
+model Comment {
+  id        String   @id @default(uuid()) @db.Uuid
+  postId    String   @map("post_id") @db.Uuid
+  authorId  String   @map("author_id") @db.Uuid
+  content   String   @db.VarChar(2000)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([postId, createdAt])
+  @@map("comments")
+}
+
+model Like {
+  id        String   @id @default(uuid()) @db.Uuid
+  postId    String   @map("post_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([userId, createdAt])
+  @@map("likes")
+}
+
+model AdminAuditLog {
+  id             String          @id @default(uuid()) @db.Uuid
+  actorId        String          @map("actor_id") @db.Uuid
+  action         String          @db.VarChar(100)
+  targetType     AuditTargetType @map("target_type")
+  targetId       String          @map("target_id") @db.Uuid
+  previousValues Json?           @map("previous_values") @db.JsonB
+  newValues      Json?           @map("new_values") @db.JsonB
+  reason         String?         @db.VarChar(1000)
+  ipAddress      String?         @map("ip_address") @db.Inet
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  actor          User            @relation("AuditActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt])
+  @@index([targetType, targetId, createdAt])
+  @@map("admin_audit_logs")
+}

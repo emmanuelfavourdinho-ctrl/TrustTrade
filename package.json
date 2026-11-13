@@ -1,0 +1,23 @@
+{
+  "name": "trusttrade",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Location-based professional discovery and social marketplace",
+  "workspaces": [
+    "apps/web",
+    "apps/api",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@trusttrade/web",
+    "dev:web": "npm run dev --workspace=@trusttrade/web",
+    "dev:api": "npm run dev --workspace=@trusttrade/api",
+    "build:web": "npm run build --workspace=@trusttrade/web",
+    "lint:web": "npm run lint --workspace=@trusttrade/web",
+    "typecheck:web": "npm run typecheck --workspace=@trusttrade/web",
+    "build:api": "npm run build --workspace=@trusttrade/api",
+    "lint:api": "npm run lint --workspace=@trusttrade/api",
+    "typecheck:api": "npm run typecheck --workspace=@trusttrade/api",
+    "test:api": "npm run test --workspace=@trusttrade/api"
+  }
+}

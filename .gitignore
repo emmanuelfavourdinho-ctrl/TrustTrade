@@ -1,0 +1,12 @@
+node_modules/
+apps/web/.next/
+apps/web/out/
+apps/api/dist/
+apps/api/src/generated/
+apps/api/private-uploads/
+private-uploads/
+.env
+.env.*
+!.env.example
+*.log
+*.tsbuildinfo
